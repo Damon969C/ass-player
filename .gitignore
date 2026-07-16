@@ -1,0 +1,53 @@
+# Local agent/editor state
+/.agents/
+/.codex/
+/.vscode/
+/.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Python environments used by Qt download helpers
+/.venv*/
+
+# CMake and compiler output
+/build/
+/build-*/
+/cmake-build-*/
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+Makefile
+build.ninja
+.ninja_deps
+.ninja_log
+*_autogen/
+*.a
+*.dll
+*.lib
+*.o
+*.obj
+*.pdb
+*.exe
+
+# Downloaded/generated Qt source, SDKs, and build trees
+/qt-src/
+/qt-static-build/
+/qt-static-windows/
+/qt-windows/
+
+# External runtime tools are dependencies, not repository contents
+/binaries/
+**/binaries/
+**/mpv.exe
+**/ffmpeg.exe
+**/ffprobe.exe
+
+# Keep only the verified, statically linked Windows application artifact
+/dist/*
+!/dist/windows-static/
+/dist/windows-static/*
+!/dist/windows-static/subtitle_sidecar_player_qt.exe
+!/dist/windows-static/SHA256SUMS
