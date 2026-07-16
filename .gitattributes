@@ -3,5 +3,10 @@
 *.h text eol=lf
 *.md text eol=lf
 *.sh text eol=lf
+*.spdx text eol=lf
 *.exe binary
 *.ico binary
+*.tar.xz binary
+
+# Preserve upstream/Debian license inventories verbatim.
+third_party/toolchain/*-copyright.txt -whitespace

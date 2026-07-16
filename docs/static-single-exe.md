@@ -102,9 +102,11 @@ x86_64-w64-mingw32-strip --strip-unneeded \
 
 当前仓库产物剥离非必要符号后大小约 24 MiB。`objdump` 依赖检查未出现 `Qt6*.dll`、`libstdc++-6.dll`、`libgcc_s_seh-1.dll`，只剩 Windows 系统 DLL。
 
-## 许可证约束
+## 许可证
 
-静态链接 Qt LGPL 版本会带来重新链接等合规义务；商业闭源分发通常需要 Qt Commercial License。若无法接受静态 LGPL 义务，应改用动态 Qt 分发，但动态分发必然需要 Qt DLL/插件 DLL。
+本仓库的项目源码及静态组合程序采用 `GPL-3.0-only`，QtBase 6.8.2 在本次分发中也选择 `GPL-3.0-only`。发布修改后的二进制时，必须同时提供相应的完整源码、构建脚本、许可证和第三方通知；不能仅替换 Qt 许可证而把本项目改为闭源分发。
+
+本次 Qt 对应源码位于 `third_party/qt/qtbase-everywhere-src-6.8.2.tar.xz`，构建 SBOM 位于 `dist/windows-static/qtbase-6.8.2.spdx`。详情见根目录 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`。
 
 ## 风险和验证
 

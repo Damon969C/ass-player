@@ -51,3 +51,4 @@ build.ninja
 /dist/windows-static/*
 !/dist/windows-static/subtitle_sidecar_player_qt.exe
 !/dist/windows-static/SHA256SUMS
+!/dist/windows-static/qtbase-6.8.2.spdx

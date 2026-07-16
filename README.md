@@ -35,9 +35,10 @@ b191d87ac57828c2f65ee12060e291c5a2ea14886bbaebdb9702bbda10f15542
 - `cmake/`：Windows MinGW 交叉编译工具链；
 - `scripts/`：Windows 构建入口；
 - `docs/`：架构与静态单文件构建说明；
-- `dist/windows-static/`：已验证的静态 Qt6 Windows 程序。
+- `dist/windows-static/`：已验证的静态 Qt6 Windows 程序和 Qt 构建 SBOM；
+- `third_party/qt/`：构建该程序所用 QtBase 6.8.2 的对应源码归档。
 
-Qt 源码、Qt SDK、CMake/Ninja 构建树、动态 Qt 分发目录，以及 mpv/FFmpeg 二进制均由 `.gitignore` 排除。
+除用于 GPL 对应源码分发的 QtBase 归档外，下载的 Qt 源码树、Qt SDK、CMake/Ninja 构建树、动态 Qt 分发目录，以及 mpv/FFmpeg 二进制均由 `.gitignore` 排除。
 
 ## 构建
 
@@ -65,4 +66,8 @@ QT_WINDOWS_PREFIX=/opt/qt6-windows-static \
 
 当前静态程序已剥离非必要符号，并用 `objdump` 确认不依赖 `Qt6*.dll`、`libstdc++-6.dll` 或 `libgcc_s_seh-1.dll`。它仍会使用 Windows 系统 DLL，以及明确声明的 mpv、ffmpeg、ffprobe 外部程序。最终兼容性应在干净的 Windows x86_64 环境中验收。
 
-静态链接 Qt 的许可注意事项见 [`DEPENDENCIES.md`](DEPENDENCIES.md)。
+## 许可证
+
+ASS Player 的项目源码及所分发的静态组合程序采用 **GNU General Public License v3.0 only**（`GPL-3.0-only`），完整条款见 [`LICENSE`](LICENSE)。
+
+QtBase 6.8.2 在本次分发中选择 `GPL-3.0-only` 许可。Qt 对应源码、构建 SBOM、所含第三方组件及 MinGW/GCC runtime 通知见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。仓库不分发 mpv、ffmpeg 或 ffprobe；用户另行取得这些程序时，其各自许可证独立适用。

@@ -1,6 +1,6 @@
 # 依赖说明
 
-仓库只托管项目源码和已静态链接 Qt 6.8.2 的 Windows x86_64 程序，不托管 mpv、FFmpeg、Qt SDK、Qt 源码或它们的构建缓存。
+仓库托管项目源码、已静态链接 Qt 6.8.2 的 Windows x86_64 程序，以及满足 GPL 对应源码分发所需的 QtBase 6.8.2 源码归档；不托管 mpv、FFmpeg、Qt SDK 或构建缓存。
 
 ## 运行依赖
 
@@ -40,6 +40,8 @@ mpv 发行包可能还需要其自身的 DLL；这些文件属于 mpv 的运行�
 
 动态开发构建可使用系统 Qt6；静态 Windows 构建需要由同一 MinGW 目标编译的静态 Qt6 前缀。完整命令见 [`docs/static-single-exe.md`](docs/static-single-exe.md)。
 
-## Qt 许可提示
+## 许可证
 
-静态链接 Qt 会产生与动态链接不同的许可义务。发布者应根据其使用的 Qt Commercial 或开源许可确认源码、重新链接和许可证文本等要求；本说明不是法律意见。
+项目源码及静态组合程序采用 `GPL-3.0-only`。QtBase 6.8.2 在本次分发中同样选择 `GPL-3.0-only`；完整项目许可证见 [`LICENSE`](LICENSE)，Qt 对应源码、SBOM 和第三方通知见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)。
+
+mpv、ffmpeg、ffprobe 未随仓库分发，不属于本项目 GPL 授权范围；用户取得和使用这些独立程序时应遵守其各自许可证。
