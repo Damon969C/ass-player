@@ -848,21 +848,37 @@ void MainWindow::togglePlayPause(bool showHint)
     }
 }
 
-void MainWindow::seekBy(double seconds)
+void MainWindow::seekToAdjacentSubtitle(SubtitleNavigationDirection direction)
 {
     if (!mediaLoaded_) return;
-    const double target = std::clamp(lastState_.position + seconds, 0.0, lastState_.duration > 0.0 ? lastState_.duration : lastState_.position + seconds);
-    suppressAutoScrollUntil_ = QDateTime::currentMSecsSinceEpoch() + 800;
+
+    if (cues_.isEmpty()) {
+        showOsd(QStringLiteral("未加载侧栏字幕"));
+        return;
+    }
+
+    const SubtitleCue *targetCue = findAdjacentSubtitleCue(cues_, lastState_.position, direction);
+    if (!targetCue) {
+        showOsd(direction == SubtitleNavigationDirection::Previous
+                ? QStringLiteral("没有上一条字幕")
+                : QStringLiteral("没有下一条字幕"));
+        return;
+    }
+
     QString error;
-    if (!mpv_.seekRelative(seconds, &error)) {
+    if (!mpv_.seekAbsolute(targetCue->startSeconds, &error)) {
         setStatus(QStringLiteral("跳转失败: %1").arg(error));
         return;
     }
-    updateTimeline(target, lastState_.duration);
-    if (const SubtitleCue *cue = findSeekCue(target)) {
-        setActiveCue(cue->id, true);
-    }
-    showOsd(QStringLiteral("%1%2秒/%3").arg(seconds >= 0 ? QStringLiteral("步进") : QStringLiteral("步退")).arg(std::abs(seconds)).arg(formatClock(target)));
+
+    suppressAutoScrollUntil_ = QDateTime::currentMSecsSinceEpoch() + 800;
+    updateTimeline(targetCue->startSeconds, lastState_.duration);
+    setActiveCue(targetCue->id, true);
+    showOsd(QStringLiteral("%1: %2")
+            .arg(direction == SubtitleNavigationDirection::Previous
+                    ? QStringLiteral("上一条字幕")
+                    : QStringLiteral("下一条字幕"),
+                formatClock(targetCue->startSeconds)));
 }
 
 void MainWindow::seekTo(double seconds, bool scroll)
@@ -1315,8 +1331,8 @@ bool MainWindow::handlePlaybackKey(QKeyEvent *event)
         return false;
     }
     switch (event->key()) {
-    case Qt::Key_Left: seekBy(-5); break;
-    case Qt::Key_Right: seekBy(5); break;
+    case Qt::Key_Left: seekToAdjacentSubtitle(SubtitleNavigationDirection::Previous); break;
+    case Qt::Key_Right: seekToAdjacentSubtitle(SubtitleNavigationDirection::Next); break;
     case Qt::Key_Up: applyVolume(qRound(lastState_.volume) + 5, true); break;
     case Qt::Key_Down: applyVolume(qRound(lastState_.volume) - 5, true); break;
     default: return false;

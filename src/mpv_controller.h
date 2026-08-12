@@ -34,8 +34,8 @@ public:
     bool openMedia(const QString &mpvPath, const QString &mediaPath, WId windowId, QString *error = nullptr);
     void stop();
     bool addSubtitle(const QString &path, QString *error = nullptr);
+    bool seekAbsolute(double seconds, QString *error = nullptr);
     bool seekTo(double seconds, QString *error = nullptr);
-    bool seekRelative(double seconds, QString *error = nullptr);
     bool togglePlayPause(bool *paused, QString *error = nullptr);
     bool setSubtitleOverlay(bool enabled, QString *error = nullptr);
     bool disablePictureSubtitle(QString *error = nullptr);

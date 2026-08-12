@@ -6,6 +6,7 @@
 - `MpvController` 是播放器控制层，负责启动/停止 mpv、传入 Qt 原生窗口 ID、JSON IPC、`request_id` 匹配和播放命令。
 - `MediaTools` 是媒体工具层，负责查找 `mpv/ffmpeg/ffprobe`、内嵌字幕轨探测、ffmpeg 抽取、内存缓存和运行期字幕文件清理。
 - `SubtitleParser` 是纯解析层，负责字幕字节解码和 `srt/vtt/ass/ssa/lrc` 解析，不依赖 UI 或 mpv。
+- `subtitle_navigation` 是纯字幕导航逻辑，按当前播放位置选出上一条或下一条字幕，不依赖 UI 或 mpv。
 
 ## 主要流程
 
@@ -38,7 +39,7 @@
 - 状态轮询读取 `time-pos`、`duration`、`pause`、`volume`、`mute`。
 - 当前时间命中字幕区间时，右侧列表高亮并滚动到中间。
 - 点击字幕或进度条时，先更新本地 UI，再发起 mpv 精确跳转，并短暂抑制自动滚动抖动。
-- 快捷键保持当前 Tauri 行为：左右 5 秒、上下音量 5、空格/K 播放暂停。
+- 左右键精确跳到上一条/下一条字幕的起始点，并保持当前播放/暂停状态；上下键调整音量 5，空格/K 播放暂停。
 
 ## 调试重点
 

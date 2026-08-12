@@ -15,6 +15,8 @@ qt_add_executable(subtitle_sidecar_player_qt WIN32
     src/main.cpp
     src/main_window.cpp
     src/main_window.h
+    src/subtitle_navigation.cpp
+    src/subtitle_navigation.h
     src/media_tools.cpp
     src/media_tools.h
     src/mpv_controller.cpp
@@ -30,6 +32,19 @@ target_link_libraries(subtitle_sidecar_player_qt PRIVATE
     Qt6::Widgets
     Qt6::Network
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_executable(subtitle_navigation_test
+        tests/subtitle_navigation_test.cpp
+        src/subtitle_navigation.cpp
+        src/subtitle_navigation.h
+        src/subtitle_parser.h
+    )
+    target_include_directories(subtitle_navigation_test PRIVATE src)
+    target_link_libraries(subtitle_navigation_test PRIVATE Qt6::Core)
+    add_test(NAME subtitle_navigation COMMAND subtitle_navigation_test)
+endif()
 
 if(WIN32)
     enable_language(RC)

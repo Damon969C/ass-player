@@ -2,6 +2,7 @@
 
 #include "media_tools.h"
 #include "mpv_controller.h"
+#include "subtitle_navigation.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -54,7 +55,7 @@ private:
     void handleDroppedPath(const QString &path);
     bool handlePlaybackKey(QKeyEvent *event);
     void togglePlayPause(bool showHint);
-    void seekBy(double seconds);
+    void seekToAdjacentSubtitle(SubtitleNavigationDirection direction);
     void seekTo(double seconds, bool scroll);
     void applyVolume(int volume, bool showHint);
     void setMuted(bool muted);

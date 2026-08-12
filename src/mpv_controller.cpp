@@ -85,15 +85,15 @@ bool MpvController::addSubtitle(const QString &path, QString *error)
     return sendCommand(QJsonArray{"sub-add", path, "select"}, error);
 }
 
-bool MpvController::seekTo(double seconds, QString *error)
+bool MpvController::seekAbsolute(double seconds, QString *error)
 {
-    return sendCommand(QJsonArray{"seek", seconds, "absolute", "exact"}, error)
-        && sendCommand(QJsonArray{"set_property", "pause", false}, error);
+    return sendCommand(QJsonArray{"seek", seconds, "absolute", "exact"}, error);
 }
 
-bool MpvController::seekRelative(double seconds, QString *error)
+bool MpvController::seekTo(double seconds, QString *error)
 {
-    return sendCommand(QJsonArray{"seek", seconds, "relative", "exact"}, error);
+    return seekAbsolute(seconds, error)
+        && sendCommand(QJsonArray{"set_property", "pause", false}, error);
 }
 
 bool MpvController::togglePlayPause(bool *paused, QString *error)
