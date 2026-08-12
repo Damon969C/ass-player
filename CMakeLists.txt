@@ -44,6 +44,31 @@ if(BUILD_TESTING)
     target_include_directories(subtitle_navigation_test PRIVATE src)
     target_link_libraries(subtitle_navigation_test PRIVATE Qt6::Core)
     add_test(NAME subtitle_navigation COMMAND subtitle_navigation_test)
+
+    if(NOT CMAKE_CROSSCOMPILING)
+        add_executable(immersive_playback_test
+            tests/immersive_playback_test.cpp
+            src/main_window.cpp
+            src/main_window.h
+            src/subtitle_navigation.cpp
+            src/subtitle_navigation.h
+            src/media_tools.cpp
+            src/media_tools.h
+            src/mpv_controller.cpp
+            src/mpv_controller.h
+            src/subtitle_parser.cpp
+            src/subtitle_parser.h
+        )
+        target_include_directories(immersive_playback_test PRIVATE src)
+        target_link_libraries(immersive_playback_test PRIVATE
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Widgets
+            Qt6::Network
+        )
+        add_test(NAME immersive_playback COMMAND immersive_playback_test)
+        set_tests_properties(immersive_playback PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    endif()
 endif()
 
 if(WIN32)

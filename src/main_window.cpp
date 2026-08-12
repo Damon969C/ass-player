@@ -75,6 +75,12 @@ constexpr int kPictureSubtitleAuto = -2;
 constexpr int kPictureSubtitleExternalFollow = -3;
 constexpr qint64 kManualSubtitleScrollSuppressMs = 2000;
 constexpr int kSubtitleScrollAnimationMs = 240;
+constexpr int kRootLayoutMargin = 18;
+constexpr int kRootLayoutSpacing = 18;
+constexpr int kPlayerLayoutSpacing = 14;
+constexpr int kVideoShellMargin = 4;
+constexpr int kImmersiveControlsMargin = 18;
+constexpr int kImmersiveControlsHideMs = 2000;
 
 const QColor kSubtitleItemBackground("#101826");
 const QColor kSubtitleItemHoverBackground("#142033");
@@ -86,6 +92,29 @@ const QColor kSubtitleSelectedTextColor("#f8fafc");
 const QColor kSubtitleTimeColor("#7dd3fc");
 const QColor kComboArrowColor("#7dd3fc");
 const QColor kComboArrowDisabledColor("#64748b");
+
+void refreshWidgetStyle(QWidget *widget)
+{
+    if (!widget) {
+        return;
+    }
+    widget->style()->unpolish(widget);
+    widget->style()->polish(widget);
+    widget->update();
+}
+
+void enableMouseTrackingForTree(QWidget *root)
+{
+    if (!root) {
+        return;
+    }
+    root->setMouseTracking(true);
+    root->setAttribute(Qt::WA_Hover, true);
+    for (QWidget *child : root->findChildren<QWidget *>()) {
+        child->setMouseTracking(true);
+        child->setAttribute(Qt::WA_Hover, true);
+    }
+}
 
 void addComboItemWithTooltip(QComboBox *combo, const QString &label, const QVariant &data = QVariant())
 {
@@ -292,26 +321,26 @@ void MainWindow::buildUi()
 {
     auto *central = new QWidget(this);
     central->setObjectName(QStringLiteral("appSurface"));
-    auto *root = new QHBoxLayout(central);
-    root->setContentsMargins(18, 18, 18, 18);
-    root->setSpacing(18);
+    rootLayout_ = new QHBoxLayout(central);
+    rootLayout_->setContentsMargins(kRootLayoutMargin, kRootLayoutMargin, kRootLayoutMargin, kRootLayoutMargin);
+    rootLayout_->setSpacing(kRootLayoutSpacing);
 
-    auto *playerPane = new QWidget(central);
-    playerPane->setObjectName(QStringLiteral("playerPane"));
-    auto *playerLayout = new QVBoxLayout(playerPane);
-    playerLayout->setContentsMargins(0, 0, 0, 0);
-    playerLayout->setSpacing(14);
+    playerPane_ = new QWidget(central);
+    playerPane_->setObjectName(QStringLiteral("playerPane"));
+    playerLayout_ = new QVBoxLayout(playerPane_);
+    playerLayout_->setContentsMargins(0, 0, 0, 0);
+    playerLayout_->setSpacing(kPlayerLayoutSpacing);
 
-    auto *toolbarStrip = new QWidget(playerPane);
-    toolbarStrip->setObjectName(QStringLiteral("toolbarStrip"));
-    auto *toolbar = new QHBoxLayout(toolbarStrip);
+    toolbarStrip_ = new QWidget(playerPane_);
+    toolbarStrip_->setObjectName(QStringLiteral("toolbarStrip"));
+    auto *toolbar = new QHBoxLayout(toolbarStrip_);
     toolbar->setContentsMargins(12, 10, 12, 10);
     toolbar->setSpacing(10);
-    openVideoButton_ = new QPushButton(QStringLiteral("打开视频"), playerPane);
-    openSubtitleButton_ = new QPushButton(QStringLiteral("手动添加字幕"), playerPane);
-    playPauseButton_ = new QPushButton(QStringLiteral("播放/暂停"), playerPane);
-    overlayToggle_ = new QCheckBox(QStringLiteral("画面字幕"), playerPane);
-    pictureSubtitleSelect_ = new ChevronComboBox(playerPane);
+    openVideoButton_ = new QPushButton(QStringLiteral("打开视频"), playerPane_);
+    openSubtitleButton_ = new QPushButton(QStringLiteral("手动添加字幕"), playerPane_);
+    playPauseButton_ = new QPushButton(QStringLiteral("播放/暂停"), playerPane_);
+    overlayToggle_ = new QCheckBox(QStringLiteral("画面字幕"), playerPane_);
+    pictureSubtitleSelect_ = new ChevronComboBox(playerPane_);
     auto *pictureSubtitleSelectPopup = new QListView(pictureSubtitleSelect_);
     pictureSubtitleSelectPopup->setObjectName(QStringLiteral("pictureSubtitleSelectPopup"));
     pictureSubtitleSelectPopup->setMouseTracking(true);
@@ -329,15 +358,15 @@ void MainWindow::buildUi()
     toolbar->addStretch();
     toolbar->addWidget(pictureSubtitleSelect_);
     toolbar->addWidget(overlayToggle_);
-    playerLayout->addWidget(toolbarStrip);
+    playerLayout_->addWidget(toolbarStrip_);
 
-    auto *videoShell = new QWidget(playerPane);
-    videoShell->setObjectName(QStringLiteral("videoShell"));
-    auto *videoShellLayout = new QVBoxLayout(videoShell);
-    videoShellLayout->setContentsMargins(4, 4, 4, 4);
-    videoShellLayout->setSpacing(0);
+    videoShell_ = new QWidget(playerPane_);
+    videoShell_->setObjectName(QStringLiteral("videoShell"));
+    videoShellLayout_ = new QVBoxLayout(videoShell_);
+    videoShellLayout_->setContentsMargins(kVideoShellMargin, kVideoShellMargin, kVideoShellMargin, kVideoShellMargin);
+    videoShellLayout_->setSpacing(0);
 
-    videoHost_ = new QWidget(videoShell);
+    videoHost_ = new QWidget(videoShell_);
     videoHost_->setObjectName(QStringLiteral("videoHost"));
     videoHost_->setAttribute(Qt::WA_NativeWindow, true);
     videoHost_->setMinimumHeight(360);
@@ -349,46 +378,52 @@ void MainWindow::buildUi()
     mediaStatus_->setObjectName(QStringLiteral("mediaStatus"));
     mediaStatus_->setAlignment(Qt::AlignCenter);
     videoLayout->addWidget(mediaStatus_);
-    videoShellLayout->addWidget(videoHost_);
-    playerLayout->addWidget(videoShell, 1);
+    videoShellLayout_->addWidget(videoHost_);
+    playerLayout_->addWidget(videoShell_, 1);
 
-    auto *controlStrip = new QWidget(playerPane);
-    controlStrip->setObjectName(QStringLiteral("controlStrip"));
-    auto *statusbar = new QHBoxLayout(controlStrip);
+    controlStrip_ = new QWidget(playerPane_);
+    controlStrip_->setObjectName(QStringLiteral("controlStrip"));
+    auto *statusbar = new QHBoxLayout(controlStrip_);
     statusbar->setContentsMargins(12, 12, 12, 12);
     statusbar->setSpacing(12);
-    timeLabel_ = new QLabel(QStringLiteral("00:00 / 00:00"), playerPane);
-    progressSlider_ = new QSlider(Qt::Horizontal, playerPane);
+    timeLabel_ = new QLabel(QStringLiteral("00:00 / 00:00"), playerPane_);
+    progressSlider_ = new QSlider(Qt::Horizontal, playerPane_);
     progressSlider_->setRange(0, 1000);
-    muteButton_ = new QPushButton(QStringLiteral("🔊"), playerPane);
-    volumeSlider_ = new QSlider(Qt::Horizontal, playerPane);
+    muteButton_ = new QPushButton(QStringLiteral("🔊"), playerPane_);
+    volumeSlider_ = new QSlider(Qt::Horizontal, playerPane_);
     volumeSlider_->setRange(0, 100);
+    fullscreenButton_ = new QPushButton(QStringLiteral("全屏"), playerPane_);
+    fullscreenButton_->setObjectName(QStringLiteral("fullscreenButton"));
+    fullscreenButton_->setMinimumWidth(58);
+    fullscreenButton_->setEnabled(false);
+    fullscreenButton_->setToolTip(QStringLiteral("沉浸播放；外层窗口最大化时进入系统全屏"));
     statusbar->addWidget(timeLabel_);
     statusbar->addWidget(progressSlider_, 1);
     statusbar->addWidget(muteButton_);
     statusbar->addWidget(volumeSlider_);
-    playerLayout->addWidget(controlStrip);
+    statusbar->addWidget(fullscreenButton_);
+    playerLayout_->addWidget(controlStrip_);
 
-    auto *subtitlePane = new QWidget(central);
-    subtitlePane->setObjectName(QStringLiteral("subtitlePane"));
-    auto *subtitleLayout = new QVBoxLayout(subtitlePane);
+    subtitlePane_ = new QWidget(central);
+    subtitlePane_->setObjectName(QStringLiteral("subtitlePane"));
+    auto *subtitleLayout = new QVBoxLayout(subtitlePane_);
     subtitleLayout->setContentsMargins(14, 14, 14, 14);
     subtitleLayout->setSpacing(10);
-    embeddedSelect_ = new ChevronComboBox(subtitlePane);
+    embeddedSelect_ = new ChevronComboBox(subtitlePane_);
     auto *embeddedSelectPopup = new QListView(embeddedSelect_);
     embeddedSelectPopup->setObjectName(QStringLiteral("embeddedSelectPopup"));
     embeddedSelectPopup->setMouseTracking(true);
     embeddedSelectPopup->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     embeddedSelect_->setView(embeddedSelectPopup);
     embeddedSelectPopupViewport_ = embeddedSelectPopup->viewport();
-    timingLogToggle_ = new QCheckBox(QStringLiteral("显示加载耗时"), subtitlePane);
-    subtitleStatus_ = new QLabel(QStringLiteral("可拖入 srt/ass/lrc 字幕"), subtitlePane);
+    timingLogToggle_ = new QCheckBox(QStringLiteral("显示加载耗时"), subtitlePane_);
+    subtitleStatus_ = new QLabel(QStringLiteral("可拖入 srt/ass/lrc 字幕"), subtitlePane_);
     subtitleStatus_->setObjectName(QStringLiteral("subtitleStatus"));
     subtitleStatus_->setWordWrap(true);
-    loadingOverlay_ = new QLabel(QStringLiteral("正在加载内嵌字幕..."), subtitlePane);
+    loadingOverlay_ = new QLabel(QStringLiteral("正在加载内嵌字幕..."), subtitlePane_);
     loadingOverlay_->setAlignment(Qt::AlignCenter);
     loadingOverlay_->hide();
-    subtitleList_ = new QListWidget(subtitlePane);
+    subtitleList_ = new QListWidget(subtitlePane_);
     subtitleList_->setItemDelegate(new SubtitleItemDelegate(subtitleList_));
     subtitleList_->setFocusPolicy(Qt::StrongFocus);
     subtitleList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -428,9 +463,9 @@ void MainWindow::buildUi()
     subtitleLayout->addWidget(loadingOverlay_);
     subtitleLayout->addWidget(subtitleList_, 1);
 
-    root->addWidget(playerPane, 1);
-    root->addWidget(subtitlePane, 0);
-    subtitlePane->setFixedWidth(390);
+    rootLayout_->addWidget(playerPane_, 1);
+    rootLayout_->addWidget(subtitlePane_, 0);
+    subtitlePane_->setFixedWidth(390);
     setCentralWidget(central);
 
     windowControls_ = new QWidget(central);
@@ -461,16 +496,20 @@ void MainWindow::buildUi()
         QMainWindow { background:#050912; }
         QWidget { color:#e5edf7; font-family:'Microsoft YaHei UI','Segoe UI',sans-serif; font-size:14px; }
         QWidget#appSurface { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #111b2b, stop:0.42 #07101d, stop:0.72 #091827, stop:1 #152033); }
+        QWidget#appSurface[immersive="true"] { background:#01040a; }
         QWidget#playerPane { background:transparent; }
         QWidget#toolbarStrip, QWidget#controlStrip, QWidget#subtitlePane { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(18, 29, 47, 226), stop:1 rgba(8, 15, 27, 222)); border:1px solid rgba(75, 102, 137, 120); border-radius:18px; }
+        QWidget#controlStrip[immersive="true"] { background:rgba(8, 15, 27, 238); border:1px solid rgba(125, 211, 252, 100); border-radius:16px; }
         QWidget#windowControls { background:rgba(10, 17, 29, 236); border:1px solid rgba(125, 211, 252, 92); border-radius:16px; }
         QWidget#videoShell { background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #0d1726, stop:0.36 #030712, stop:1 #0a1422); border:1px solid rgba(56, 189, 248, 62); border-radius:22px; }
         QWidget#videoHost { background:#01040a; border:1px solid rgba(148, 163, 184, 36); border-radius:18px; }
+        QWidget#videoShell[immersive="true"], QWidget#videoHost[immersive="true"] { background:#01040a; border:0; border-radius:0; }
         QLabel { background:transparent; }
         QLabel#mediaStatus { color:#bae6fd; font-size:16px; font-weight:600; }
         QLabel#subtitleStatus { color:#a8b8ca; line-height:145%; }
         QPushButton, QComboBox { border:1px solid rgba(96, 165, 250, 96); border-radius:11px; background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #18263b, stop:1 #101a2b); color:#f8fafc; selection-background-color:#123244; selection-color:#f8fafc; }
         QPushButton { padding:8px 13px; }
+        QPushButton#fullscreenButton { font-weight:600; padding:8px 11px; }
         QComboBox { padding:8px 42px 8px 13px; }
         QPushButton:hover, QComboBox:hover { border-color:#7dd3fc; background:qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #20324b, stop:1 #132239); }
         QPushButton:pressed { background:#0e7490; border-color:#67e8f9; }
@@ -504,6 +543,7 @@ void MainWindow::buildUi()
         QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0; }
         QScrollBar:horizontal { height:0; background:transparent; }
     )");
+    enableMouseTrackingForTree(central);
 }
 
 void MainWindow::connectSignals()
@@ -522,6 +562,7 @@ void MainWindow::connectSignals()
     connect(pictureSubtitleSelect_, qOverload<int>(&QComboBox::currentIndexChanged), this, &MainWindow::selectPictureSubtitle);
     connect(muteButton_, &QPushButton::clicked, this, [this]() { setMuted(!lastState_.muted); });
     connect(volumeSlider_, &QSlider::valueChanged, this, [this](int value) { applyVolume(value, true); });
+    connect(fullscreenButton_, &QPushButton::clicked, this, &MainWindow::toggleImmersivePlayback);
     connect(minimizeButton_, &QToolButton::clicked, this, &MainWindow::showMinimized);
     connect(maximizeButton_, &QToolButton::clicked, this, &MainWindow::toggleMaximized);
     connect(closeButton_, &QToolButton::clicked, this, &MainWindow::close);
@@ -536,6 +577,11 @@ void MainWindow::connectSignals()
     });
     connect(&stateTimer_, &QTimer::timeout, this, &MainWindow::pollPlaybackState);
     connect(&windowControlRevealTimer_, &QTimer::timeout, this, &MainWindow::updateWindowControlVisibility);
+    immersiveControlsTimer_ = new QTimer(this);
+    immersiveControlsTimer_->setObjectName(QStringLiteral("immersiveControlsTimer"));
+    immersiveControlsTimer_->setSingleShot(true);
+    immersiveControlsTimer_->setInterval(kImmersiveControlsHideMs);
+    connect(immersiveControlsTimer_, &QTimer::timeout, this, &MainWindow::hideImmersiveControls);
     windowControlRevealTimer_.setInterval(120);
     windowControlRevealTimer_.start();
     qApp->installEventFilter(this);
@@ -572,6 +618,7 @@ void MainWindow::openMedia(const QString &path)
 
     currentMediaPath_ = path;
     mediaLoaded_ = true;
+    fullscreenButton_->setEnabled(true);
     mediaStatus_->setText(basename(path));
     tracks_ = mediaTools_.probeSubtitleTracks(path, &error);
     mediaTools_.resetEmbeddedCache(path, tracks_);
@@ -1114,6 +1161,144 @@ void MainWindow::showOsd(const QString &text)
     }
 }
 
+void MainWindow::toggleImmersivePlayback()
+{
+    if (immersiveMode_) {
+        exitImmersivePlayback();
+    } else {
+        enterImmersivePlayback();
+    }
+}
+
+void MainWindow::enterImmersivePlayback()
+{
+    if (immersiveMode_ || !rootLayout_ || !playerLayout_ || !videoShellLayout_ || !controlStrip_) {
+        return;
+    }
+
+    immersiveMode_ = true;
+    immersiveUsesWindowFullscreen_ = isMaximized();
+    toolbarStrip_->hide();
+    subtitlePane_->hide();
+    rootLayout_->setContentsMargins(0, 0, 0, 0);
+    rootLayout_->setSpacing(0);
+    playerLayout_->setSpacing(0);
+    videoShellLayout_->setContentsMargins(0, 0, 0, 0);
+    playerLayout_->removeWidget(controlStrip_);
+    setImmersiveSurfaceStyle(true);
+
+    fullscreenButton_->setText(QStringLiteral("退出"));
+    fullscreenButton_->setToolTip(QStringLiteral("退出沉浸播放 (Esc)"));
+    if (immersiveUsesWindowFullscreen_) {
+        showFullScreen();
+    }
+    showImmersiveControls();
+    updateWindowControlGeometry();
+    updateWindowControlVisibility();
+    QTimer::singleShot(0, this, &MainWindow::positionImmersiveControls);
+}
+
+void MainWindow::exitImmersivePlayback()
+{
+    if (!immersiveMode_) {
+        return;
+    }
+
+    immersiveMode_ = false;
+    if (immersiveControlsTimer_) {
+        immersiveControlsTimer_->stop();
+    }
+    if (centralWidget()) {
+        centralWidget()->unsetCursor();
+    }
+
+    controlStrip_->show();
+    if (playerLayout_->indexOf(controlStrip_) < 0) {
+        playerLayout_->addWidget(controlStrip_);
+    }
+    rootLayout_->setContentsMargins(kRootLayoutMargin, kRootLayoutMargin, kRootLayoutMargin, kRootLayoutMargin);
+    rootLayout_->setSpacing(kRootLayoutSpacing);
+    playerLayout_->setSpacing(kPlayerLayoutSpacing);
+    videoShellLayout_->setContentsMargins(kVideoShellMargin, kVideoShellMargin, kVideoShellMargin, kVideoShellMargin);
+    toolbarStrip_->show();
+    subtitlePane_->show();
+    setImmersiveSurfaceStyle(false);
+
+    fullscreenButton_->setText(QStringLiteral("全屏"));
+    fullscreenButton_->setToolTip(QStringLiteral("沉浸播放；外层窗口最大化时进入系统全屏"));
+    const bool restoreMaximized = immersiveUsesWindowFullscreen_;
+    immersiveUsesWindowFullscreen_ = false;
+    if (restoreMaximized) {
+        showMaximized();
+    }
+    updateMaximizeButton();
+    updateWindowControlGeometry();
+    updateWindowControlVisibility();
+}
+
+void MainWindow::showImmersiveControls()
+{
+    if (!immersiveMode_ || !controlStrip_) {
+        return;
+    }
+    if (centralWidget()) {
+        centralWidget()->unsetCursor();
+    }
+    controlStrip_->show();
+    positionImmersiveControls();
+    controlStrip_->raise();
+    if (immersiveControlsTimer_) {
+        immersiveControlsTimer_->start();
+    }
+}
+
+void MainWindow::hideImmersiveControls()
+{
+    if (!immersiveMode_ || !controlStrip_) {
+        return;
+    }
+    if (QApplication::mouseButtons() != Qt::NoButton) {
+        immersiveControlsTimer_->start();
+        return;
+    }
+    controlStrip_->hide();
+    if (centralWidget()) {
+        centralWidget()->setCursor(Qt::BlankCursor);
+    }
+}
+
+void MainWindow::positionImmersiveControls()
+{
+    if (!immersiveMode_ || !playerPane_ || !controlStrip_) {
+        return;
+    }
+    const QRect available = playerPane_->rect();
+    const int margin = std::min(kImmersiveControlsMargin, std::max(0, available.width() / 4));
+    const int preferredHeight = std::max(1, controlStrip_->sizeHint().height());
+    const int height = std::min(preferredHeight, std::max(1, available.height() - (2 * margin)));
+    const int width = std::max(1, available.width() - (2 * margin));
+    controlStrip_->setGeometry(margin, std::max(0, available.height() - height - margin), width, height);
+}
+
+void MainWindow::setImmersiveSurfaceStyle(bool immersive)
+{
+    const QVariant value(immersive);
+    if (centralWidget()) {
+        centralWidget()->setProperty("immersive", value);
+        refreshWidgetStyle(centralWidget());
+    }
+    for (QWidget *widget : {videoShell_, videoHost_, controlStrip_}) {
+        widget->setProperty("immersive", value);
+        refreshWidgetStyle(widget);
+    }
+}
+
+bool MainWindow::isEventFromThisWindow(QObject *object) const
+{
+    const auto *widget = qobject_cast<const QWidget *>(object);
+    return widget && (widget == this || isAncestorOf(widget));
+}
+
 void MainWindow::toggleMaximized()
 {
     if (isMaximized()) {
@@ -1138,6 +1323,10 @@ void MainWindow::updateWindowControlVisibility()
     if (!windowControls_) {
         return;
     }
+    if (immersiveUsesWindowFullscreen_ || isFullScreen()) {
+        windowControls_->hide();
+        return;
+    }
     const QWidget *focusWidget = QApplication::focusWidget();
     const bool controlsFocused = focusWidget && windowControls_->isAncestorOf(focusWidget);
     const QPoint localCursor = mapFromGlobal(QCursor::pos());
@@ -1154,7 +1343,7 @@ void MainWindow::updateMaximizeButton()
 
 Qt::Edges MainWindow::resizeEdgesAt(const QPoint &position) const
 {
-    if (isMaximized()) {
+    if (isMaximized() || isFullScreen()) {
         return {};
     }
 
@@ -1174,7 +1363,8 @@ Qt::Edges MainWindow::resizeEdgesAt(const QPoint &position) const
 
 bool MainWindow::isMoveZoneAt(const QPoint &position) const
 {
-    return position.y() >= kTopResizeBorderWidth
+    return !isFullScreen()
+        && position.y() >= kTopResizeBorderWidth
         && position.y() <= kMoveZoneHeight
         && !isInteractiveAt(position);
 }
@@ -1284,6 +1474,11 @@ void MainWindow::dropEvent(QDropEvent *event)
 
 void MainWindow::keyPressEvent(QKeyEvent *event)
 {
+    if (immersiveMode_ && event->modifiers() == Qt::NoModifier && event->key() == Qt::Key_Escape) {
+        exitImmersivePlayback();
+        event->accept();
+        return;
+    }
     if (handlePlaybackKey(event)) {
         return;
     }
@@ -1345,6 +1540,7 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
     updateWindowControlGeometry();
+    positionImmersiveControls();
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -1353,6 +1549,16 @@ void MainWindow::changeEvent(QEvent *event)
     if (event->type() == QEvent::WindowStateChange) {
         updateMaximizeButton();
         updateWindowControlGeometry();
+        positionImmersiveControls();
+        if (immersiveMode_ && !immersiveUsesWindowFullscreen_ && isMaximized()) {
+            immersiveUsesWindowFullscreen_ = true;
+            QTimer::singleShot(0, this, [this]() {
+                if (immersiveMode_ && immersiveUsesWindowFullscreen_ && !isFullScreen()) {
+                    showFullScreen();
+                    showImmersiveControls();
+                }
+            });
+        }
     }
 }
 
@@ -1365,8 +1571,28 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 || object == subtitleListScrollBar_);
     };
 
+    if (immersiveMode_ && isEventFromThisWindow(watched)) {
+        switch (event->type()) {
+        case QEvent::MouseMove:
+        case QEvent::HoverMove:
+        case QEvent::MouseButtonPress:
+        case QEvent::MouseButtonRelease:
+        case QEvent::Wheel:
+        case QEvent::KeyPress:
+            showImmersiveControls();
+            break;
+        default:
+            break;
+        }
+    }
+
     if (event->type() == QEvent::KeyPress && QApplication::activeWindow() == this) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
+        if (immersiveMode_ && keyEvent->modifiers() == Qt::NoModifier && keyEvent->key() == Qt::Key_Escape) {
+            exitImmersivePlayback();
+            keyEvent->accept();
+            return true;
+        }
         const bool subtitleListHasFocus = subtitleList_
             && (subtitleList_->hasFocus() || (subtitleListViewport_ && subtitleListViewport_->hasFocus()));
         const bool subtitleListNavigationKey = keyEvent->key() == Qt::Key_Up
@@ -1448,6 +1674,10 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message, qintptr
 #ifdef Q_OS_WIN
     MSG *msg = static_cast<MSG *>(message);
     if (msg->message == WM_NCHITTEST) {
+        if (isFullScreen()) {
+            *result = HTCLIENT;
+            return true;
+        }
         const QPoint position = mapFromGlobal(QPoint(GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam)));
         if (isInteractiveAt(position)) {
             *result = HTCLIENT;

@@ -18,6 +18,8 @@
 
 class QScrollBar;
 class QPropertyAnimation;
+class QHBoxLayout;
+class QVBoxLayout;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -73,6 +75,14 @@ private:
     void setStatus(const QString &message);
     void showVolumeOsd(double volume);
     void showOsd(const QString &text);
+    void toggleImmersivePlayback();
+    void enterImmersivePlayback();
+    void exitImmersivePlayback();
+    void showImmersiveControls();
+    void hideImmersiveControls();
+    void positionImmersiveControls();
+    void setImmersiveSurfaceStyle(bool immersive);
+    bool isEventFromThisWindow(QObject *object) const;
     void toggleMaximized();
     void updateWindowControlGeometry();
     void updateWindowControlVisibility();
@@ -89,7 +99,15 @@ private:
     static QString formatTime(double seconds);
     static QString formatClock(double seconds);
 
+    QHBoxLayout *rootLayout_ = nullptr;
+    QVBoxLayout *playerLayout_ = nullptr;
+    QVBoxLayout *videoShellLayout_ = nullptr;
+    QWidget *playerPane_ = nullptr;
+    QWidget *toolbarStrip_ = nullptr;
+    QWidget *videoShell_ = nullptr;
     QWidget *videoHost_ = nullptr;
+    QWidget *controlStrip_ = nullptr;
+    QWidget *subtitlePane_ = nullptr;
     QPushButton *openVideoButton_ = nullptr;
     QPushButton *openSubtitleButton_ = nullptr;
     QPushButton *playPauseButton_ = nullptr;
@@ -105,6 +123,7 @@ private:
     QSlider *progressSlider_ = nullptr;
     QPushButton *muteButton_ = nullptr;
     QSlider *volumeSlider_ = nullptr;
+    QPushButton *fullscreenButton_ = nullptr;
     QListWidget *subtitleList_ = nullptr;
     QWidget *subtitleListViewport_ = nullptr;
     QScrollBar *subtitleListScrollBar_ = nullptr;
@@ -120,6 +139,7 @@ private:
     QSettings settings_;
     QTimer stateTimer_;
     QTimer windowControlRevealTimer_;
+    QTimer *immersiveControlsTimer_ = nullptr;
     QVector<SubtitleCue> cues_;
     QVector<SubtitleTrack> tracks_;
     QVector<MpvSubtitleTrack> pictureSubtitleTracks_;
@@ -131,4 +151,6 @@ private:
     qint64 suppressAutoScrollUntil_ = 0;
     int embeddedSubtitleLoadRequestId_ = 0;
     bool mediaLoaded_ = false;
+    bool immersiveMode_ = false;
+    bool immersiveUsesWindowFullscreen_ = false;
 };
