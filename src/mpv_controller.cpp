@@ -112,6 +112,11 @@ bool MpvController::togglePlayPause(bool *paused, QString *error)
     return true;
 }
 
+bool MpvController::setPaused(bool paused, QString *error)
+{
+    return sendCommand(QJsonArray{"set_property", "pause", paused}, error);
+}
+
 bool MpvController::setSubtitleOverlay(bool enabled, QString *error)
 {
     return sendCommand(QJsonArray{"set_property", "sub-visibility", enabled ? "yes" : "no"}, error);

@@ -40,6 +40,11 @@ protected:
     bool nativeEvent(const QByteArray &eventType, void *message, qintptr *result) override;
 
 private:
+    enum class ImmersiveWindowMode {
+        InWindow,
+        SystemFullScreen,
+    };
+
     void buildUi();
     void connectSignals();
     void openVideoDialog();
@@ -57,6 +62,9 @@ private:
     void handleDroppedPath(const QString &path);
     bool handlePlaybackKey(QKeyEvent *event);
     void togglePlayPause(bool showHint);
+    void handleSpacePlaybackAction();
+    void setRepeatMode(bool enabled);
+    void repeatCurrentSubtitle();
     void seekToAdjacentSubtitle(SubtitleNavigationDirection direction);
     void seekTo(double seconds, bool scroll);
     void applyVolume(int volume, bool showHint);
@@ -70,6 +78,8 @@ private:
     void refreshSubtitleListLayoutForWidthChange();
     const SubtitleCue *findActiveCue(double seconds) const;
     const SubtitleCue *findSeekCue(double seconds) const;
+    const SubtitleCue *resolveRepeatCue(double seconds, bool preferHighlightedCue) const;
+    bool pauseAtRepeatBoundary(PlaybackState *state);
     void updateTimeline(double position, double duration);
     void updateVolumeUi(double volume, bool muted);
     void setStatus(const QString &message);
@@ -82,7 +92,10 @@ private:
     void hideImmersiveControls();
     void positionImmersiveControls();
     void setImmersiveSurfaceStyle(bool immersive);
+    void updateVideoHostMask();
     bool isEventFromThisWindow(QObject *object) const;
+    void enterSystemFullscreenImmersive();
+    void leaveSystemFullscreenImmersive();
     void toggleMaximized();
     void updateWindowControlGeometry();
     void updateWindowControlVisibility();
@@ -111,6 +124,7 @@ private:
     QPushButton *openVideoButton_ = nullptr;
     QPushButton *openSubtitleButton_ = nullptr;
     QPushButton *playPauseButton_ = nullptr;
+    QCheckBox *repeatToggle_ = nullptr;
     QCheckBox *overlayToggle_ = nullptr;
     QComboBox *pictureSubtitleSelect_ = nullptr;
     QWidget *pictureSubtitleSelectPopupViewport_ = nullptr;
@@ -130,6 +144,7 @@ private:
     QPropertyAnimation *subtitleScrollAnimation_ = nullptr;
     QLabel *loadingOverlay_ = nullptr;
     QWidget *windowControls_ = nullptr;
+    QWidget *immersiveFullscreenWindow_ = nullptr;
     QToolButton *minimizeButton_ = nullptr;
     QToolButton *maximizeButton_ = nullptr;
     QToolButton *closeButton_ = nullptr;
@@ -147,10 +162,11 @@ private:
     QString currentMediaPath_;
     PlaybackState lastState_;
     int activeCueId_ = -1;
+    int repeatCueId_ = -1;
     int subtitleListViewportWidth_ = -1;
     qint64 suppressAutoScrollUntil_ = 0;
     int embeddedSubtitleLoadRequestId_ = 0;
     bool mediaLoaded_ = false;
     bool immersiveMode_ = false;
-    bool immersiveUsesWindowFullscreen_ = false;
+    ImmersiveWindowMode immersiveWindowMode_ = ImmersiveWindowMode::InWindow;
 };

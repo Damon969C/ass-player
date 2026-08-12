@@ -1,5 +1,6 @@
 #include "subtitle_navigation.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 
@@ -51,4 +52,62 @@ const SubtitleCue *findAdjacentSubtitleCue(
         }
     }
     return nullptr;
+}
+
+const SubtitleCue *findSubtitleCueById(const QVector<SubtitleCue> &cues, int cueId)
+{
+    for (const SubtitleCue &cue : cues) {
+        if (cue.id == cueId) {
+            return &cue;
+        }
+    }
+    return nullptr;
+}
+
+const SubtitleCue *findAdjacentSubtitleCueById(
+    const QVector<SubtitleCue> &cues,
+    int cueId,
+    SubtitleNavigationDirection direction)
+{
+    for (qsizetype index = 0; index < cues.size(); ++index) {
+        if (cues[index].id != cueId) {
+            continue;
+        }
+        const qsizetype targetIndex = direction == SubtitleNavigationDirection::Previous
+            ? index - 1
+            : index + 1;
+        return targetIndex >= 0 && targetIndex < cues.size() ? &cues[targetIndex] : nullptr;
+    }
+    return nullptr;
+}
+
+double subtitleCuePlaybackEnd(
+    const QVector<SubtitleCue> &cues,
+    int cueId,
+    double mediaDurationSeconds)
+{
+    for (qsizetype index = 0; index < cues.size(); ++index) {
+        const SubtitleCue &cue = cues[index];
+        if (cue.id != cueId) {
+            continue;
+        }
+
+        double end = std::isfinite(cue.endSeconds) && cue.endSeconds > cue.startSeconds
+            ? cue.endSeconds
+            : -1.0;
+        if (end < 0.0) {
+            for (qsizetype nextIndex = index + 1; nextIndex < cues.size(); ++nextIndex) {
+                if (std::isfinite(cues[nextIndex].startSeconds)
+                    && cues[nextIndex].startSeconds > cue.startSeconds) {
+                    end = cues[nextIndex].startSeconds;
+                    break;
+                }
+            }
+        }
+        if (std::isfinite(mediaDurationSeconds) && mediaDurationSeconds > cue.startSeconds) {
+            end = end > cue.startSeconds ? std::min(end, mediaDurationSeconds) : mediaDurationSeconds;
+        }
+        return end > cue.startSeconds ? end : -1.0;
+    }
+    return -1.0;
 }

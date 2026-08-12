@@ -21,12 +21,14 @@
 #include <QMimeData>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPaintEvent>
 #include <QCursor>
 #include <QEasingCurve>
 #include <QMetaObject>
 #include <QPropertyAnimation>
 #include <QRegularExpression>
+#include <QRegion>
 #include <QScrollBar>
 #include <QSizePolicy>
 #include <QStyle>
@@ -81,6 +83,9 @@ constexpr int kPlayerLayoutSpacing = 14;
 constexpr int kVideoShellMargin = 4;
 constexpr int kImmersiveControlsMargin = 18;
 constexpr int kImmersiveControlsHideMs = 2000;
+constexpr int kPlaybackStatePollMs = 250;
+constexpr int kRepeatPlaybackStatePollMs = 50;
+constexpr qreal kVideoHostCornerRadius = 18.0;
 
 const QColor kSubtitleItemBackground("#101826");
 const QColor kSubtitleItemHoverBackground("#142033");
@@ -296,11 +301,14 @@ MainWindow::MainWindow(QWidget *parent)
     buildUi();
     restoreSettings();
     connectSignals();
-    stateTimer_.setInterval(250);
+    stateTimer_.setInterval(kPlaybackStatePollMs);
 }
 
 MainWindow::~MainWindow()
 {
+    if (immersiveMode_) {
+        exitImmersivePlayback();
+    }
     stopSubtitleScrollAnimation();
     ++embeddedSubtitleLoadRequestId_;
     qApp->removeEventFilter(this);
@@ -339,6 +347,10 @@ void MainWindow::buildUi()
     openVideoButton_ = new QPushButton(QStringLiteral("打开视频"), playerPane_);
     openSubtitleButton_ = new QPushButton(QStringLiteral("手动添加字幕"), playerPane_);
     playPauseButton_ = new QPushButton(QStringLiteral("播放/暂停"), playerPane_);
+    playPauseButton_->setObjectName(QStringLiteral("playPauseButton"));
+    repeatToggle_ = new QCheckBox(QStringLiteral("重复"), playerPane_);
+    repeatToggle_->setObjectName(QStringLiteral("repeatToggle"));
+    repeatToggle_->setToolTip(QStringLiteral("逐条练习：字幕结束时自动暂停，空格重播当前字幕"));
     overlayToggle_ = new QCheckBox(QStringLiteral("画面字幕"), playerPane_);
     pictureSubtitleSelect_ = new ChevronComboBox(playerPane_);
     auto *pictureSubtitleSelectPopup = new QListView(pictureSubtitleSelect_);
@@ -355,6 +367,7 @@ void MainWindow::buildUi()
     toolbar->addWidget(openVideoButton_);
     toolbar->addWidget(openSubtitleButton_);
     toolbar->addWidget(playPauseButton_);
+    toolbar->addWidget(repeatToggle_);
     toolbar->addStretch();
     toolbar->addWidget(pictureSubtitleSelect_);
     toolbar->addWidget(overlayToggle_);
@@ -544,6 +557,7 @@ void MainWindow::buildUi()
         QScrollBar:horizontal { height:0; background:transparent; }
     )");
     enableMouseTrackingForTree(central);
+    updateVideoHostMask();
 }
 
 void MainWindow::connectSignals()
@@ -551,6 +565,7 @@ void MainWindow::connectSignals()
     connect(openVideoButton_, &QPushButton::clicked, this, &MainWindow::openVideoDialog);
     connect(openSubtitleButton_, &QPushButton::clicked, this, &MainWindow::openSubtitleDialog);
     connect(playPauseButton_, &QPushButton::clicked, this, [this]() { togglePlayPause(true); });
+    connect(repeatToggle_, &QCheckBox::toggled, this, &MainWindow::setRepeatMode);
     connect(overlayToggle_, &QCheckBox::toggled, this, [this]() {
         settings_.setValue("subtitle-overlay", overlayToggle_->isChecked());
         syncSubtitleOverlay();
@@ -571,8 +586,11 @@ void MainWindow::connectSignals()
         const auto it = std::find_if(cues_.begin(), cues_.end(), [cueId](const SubtitleCue &cue) { return cue.id == cueId; });
         if (it != cues_.end()) {
             suppressAutoScrollUntil_ = 0;
-            setActiveCue(it->id, true);
             seekTo(it->startSeconds, false);
+            if (repeatToggle_->isChecked()) {
+                repeatCueId_ = it->id;
+            }
+            setActiveCue(it->id, true);
         }
     });
     connect(&stateTimer_, &QTimer::timeout, this, &MainWindow::pollPlaybackState);
@@ -895,6 +913,58 @@ void MainWindow::togglePlayPause(bool showHint)
     }
 }
 
+void MainWindow::handleSpacePlaybackAction()
+{
+    if (repeatToggle_->isChecked()) {
+        repeatCurrentSubtitle();
+        return;
+    }
+    togglePlayPause(true);
+}
+
+void MainWindow::setRepeatMode(bool enabled)
+{
+    repeatCueId_ = -1;
+    stateTimer_.setInterval(enabled ? kRepeatPlaybackStatePollMs : kPlaybackStatePollMs);
+    if (enabled) {
+        if (const SubtitleCue *cue = resolveRepeatCue(lastState_.position, lastState_.paused)) {
+            repeatCueId_ = cue->id;
+            setActiveCue(cue->id, false);
+        }
+    }
+    if (mediaLoaded_) {
+        showOsd(enabled ? QStringLiteral("重复模式：开启") : QStringLiteral("重复模式：关闭"));
+    }
+}
+
+void MainWindow::repeatCurrentSubtitle()
+{
+    if (!mediaLoaded_) return;
+    if (cues_.isEmpty()) {
+        showOsd(QStringLiteral("未加载侧栏字幕"));
+        return;
+    }
+
+    const SubtitleCue *cue = resolveRepeatCue(lastState_.position, true);
+    if (!cue) {
+        showOsd(QStringLiteral("没有可重复的字幕"));
+        return;
+    }
+
+    QString error;
+    if (!mpv_.seekTo(cue->startSeconds, &error)) {
+        setStatus(QStringLiteral("重复播放失败: %1").arg(error));
+        return;
+    }
+
+    repeatCueId_ = cue->id;
+    lastState_.paused = false;
+    suppressAutoScrollUntil_ = 0;
+    updateTimeline(cue->startSeconds, lastState_.duration);
+    setActiveCue(cue->id, true);
+    showOsd(QStringLiteral("重复: %1").arg(formatClock(cue->startSeconds)));
+}
+
 void MainWindow::seekToAdjacentSubtitle(SubtitleNavigationDirection direction)
 {
     if (!mediaLoaded_) return;
@@ -904,7 +974,15 @@ void MainWindow::seekToAdjacentSubtitle(SubtitleNavigationDirection direction)
         return;
     }
 
-    const SubtitleCue *targetCue = findAdjacentSubtitleCue(cues_, lastState_.position, direction);
+    const SubtitleCue *targetCue = nullptr;
+    if (repeatToggle_->isChecked()) {
+        const SubtitleCue *anchorCue = resolveRepeatCue(lastState_.position, true);
+        if (anchorCue) {
+            targetCue = findAdjacentSubtitleCueById(cues_, anchorCue->id, direction);
+        }
+    } else {
+        targetCue = findAdjacentSubtitleCue(cues_, lastState_.position, direction);
+    }
     if (!targetCue) {
         showOsd(direction == SubtitleNavigationDirection::Previous
                 ? QStringLiteral("没有上一条字幕")
@@ -918,6 +996,9 @@ void MainWindow::seekToAdjacentSubtitle(SubtitleNavigationDirection direction)
         return;
     }
 
+    if (repeatToggle_->isChecked()) {
+        repeatCueId_ = targetCue->id;
+    }
     suppressAutoScrollUntil_ = QDateTime::currentMSecsSinceEpoch() + 800;
     updateTimeline(targetCue->startSeconds, lastState_.duration);
     setActiveCue(targetCue->id, true);
@@ -938,6 +1019,9 @@ void MainWindow::seekTo(double seconds, bool scroll)
     }
     updateTimeline(seconds, lastState_.duration);
     if (const SubtitleCue *cue = findSeekCue(seconds)) {
+        if (repeatToggle_->isChecked()) {
+            repeatCueId_ = cue->id;
+        }
         if (scroll || cue->id != activeCueId_) {
             setActiveCue(cue->id, scroll);
         }
@@ -1003,11 +1087,20 @@ void MainWindow::pollPlaybackState()
         stateTimer_.stop();
         return;
     }
+    const SubtitleCue *cue = findActiveCue(state.position);
+    if (repeatToggle_->isChecked() && !findSubtitleCueById(cues_, repeatCueId_)) {
+        if (const SubtitleCue *repeatCue = resolveRepeatCue(state.position, state.paused)) {
+            repeatCueId_ = repeatCue->id;
+        }
+    }
+    const bool stoppedAtRepeatBoundary = pauseAtRepeatBoundary(&state);
+    if (stoppedAtRepeatBoundary) {
+        cue = findSubtitleCueById(cues_, repeatCueId_);
+    }
     lastState_ = state;
     updateTimeline(state.position, state.duration);
     updateVolumeUi(state.volume, state.muted);
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    const SubtitleCue *cue = findActiveCue(state.position);
     if (cue && cue->id != activeCueId_) {
         setActiveCue(cue->id, now >= suppressAutoScrollUntil_);
     }
@@ -1024,6 +1117,7 @@ void MainWindow::setCues(const QVector<SubtitleCue> &cues, const QString &messag
     stopSubtitleScrollAnimation();
     cues_ = cues;
     activeCueId_ = -1;
+    repeatCueId_ = -1;
     subtitleList_->clear();
     for (const SubtitleCue &cue : cues_) {
         auto *item = new QListWidgetItem(QStringLiteral("%1  %2").arg(formatTime(cue.startSeconds), cue.text));
@@ -1034,6 +1128,12 @@ void MainWindow::setCues(const QVector<SubtitleCue> &cues, const QString &messag
     }
     subtitleList_->doItemsLayout();
     subtitleListViewportWidth_ = subtitleListViewport_ ? subtitleListViewport_->width() : -1;
+    if (repeatToggle_->isChecked()) {
+        if (const SubtitleCue *cue = resolveRepeatCue(lastState_.position, lastState_.paused)) {
+            repeatCueId_ = cue->id;
+            setActiveCue(cue->id, false);
+        }
+    }
     setStatus(cues_.isEmpty() ? message : QStringLiteral("%1，共 %2 条").arg(message).arg(cues_.size()));
 }
 
@@ -1124,6 +1224,54 @@ const SubtitleCue *MainWindow::findSeekCue(double seconds) const
     return cues_.isEmpty() ? nullptr : &cues_.last();
 }
 
+const SubtitleCue *MainWindow::resolveRepeatCue(double seconds, bool preferHighlightedCue) const
+{
+    if (const SubtitleCue *selected = findSubtitleCueById(cues_, repeatCueId_)) {
+        return selected;
+    }
+    if (preferHighlightedCue) {
+        if (const SubtitleCue *highlighted = findSubtitleCueById(cues_, activeCueId_)) {
+            return highlighted;
+        }
+    }
+    if (const SubtitleCue *active = findActiveCue(seconds)) {
+        return active;
+    }
+    return findSeekCue(seconds);
+}
+
+bool MainWindow::pauseAtRepeatBoundary(PlaybackState *state)
+{
+    if (!state || !repeatToggle_->isChecked() || state->paused) {
+        return false;
+    }
+    const SubtitleCue *cue = findSubtitleCueById(cues_, repeatCueId_);
+    if (!cue) {
+        return false;
+    }
+    const double end = subtitleCuePlaybackEnd(cues_, cue->id, state->duration);
+    if (end < 0.0 || state->position < end) {
+        return false;
+    }
+
+    QString error;
+    if (!mpv_.setPaused(true, &error)) {
+        setStatus(QStringLiteral("重复模式暂停失败: %1").arg(error));
+        return false;
+    }
+    state->paused = true;
+
+    QString seekError;
+    if (mpv_.seekAbsolute(end, &seekError)) {
+        state->position = end;
+    } else {
+        setStatus(QStringLiteral("重复模式定位失败: %1").arg(seekError));
+    }
+    suppressAutoScrollUntil_ = 0;
+    setActiveCue(cue->id, true);
+    return true;
+}
+
 void MainWindow::updateTimeline(double position, double duration)
 {
     lastState_.position = position;
@@ -1177,7 +1325,9 @@ void MainWindow::enterImmersivePlayback()
     }
 
     immersiveMode_ = true;
-    immersiveUsesWindowFullscreen_ = isMaximized();
+    immersiveWindowMode_ = isMaximized()
+        ? ImmersiveWindowMode::SystemFullScreen
+        : ImmersiveWindowMode::InWindow;
     toolbarStrip_->hide();
     subtitlePane_->hide();
     rootLayout_->setContentsMargins(0, 0, 0, 0);
@@ -1189,8 +1339,8 @@ void MainWindow::enterImmersivePlayback()
 
     fullscreenButton_->setText(QStringLiteral("退出"));
     fullscreenButton_->setToolTip(QStringLiteral("退出沉浸播放 (Esc)"));
-    if (immersiveUsesWindowFullscreen_) {
-        showFullScreen();
+    if (immersiveWindowMode_ == ImmersiveWindowMode::SystemFullScreen) {
+        enterSystemFullscreenImmersive();
     }
     showImmersiveControls();
     updateWindowControlGeometry();
@@ -1204,12 +1354,16 @@ void MainWindow::exitImmersivePlayback()
         return;
     }
 
+    const bool wasSystemFullscreen = immersiveWindowMode_ == ImmersiveWindowMode::SystemFullScreen;
     immersiveMode_ = false;
     if (immersiveControlsTimer_) {
         immersiveControlsTimer_->stop();
     }
     if (centralWidget()) {
         centralWidget()->unsetCursor();
+    }
+    if (wasSystemFullscreen) {
+        leaveSystemFullscreenImmersive();
     }
 
     controlStrip_->show();
@@ -1226,11 +1380,7 @@ void MainWindow::exitImmersivePlayback()
 
     fullscreenButton_->setText(QStringLiteral("全屏"));
     fullscreenButton_->setToolTip(QStringLiteral("沉浸播放；外层窗口最大化时进入系统全屏"));
-    const bool restoreMaximized = immersiveUsesWindowFullscreen_;
-    immersiveUsesWindowFullscreen_ = false;
-    if (restoreMaximized) {
-        showMaximized();
-    }
+    immersiveWindowMode_ = ImmersiveWindowMode::InWindow;
     updateMaximizeButton();
     updateWindowControlGeometry();
     updateWindowControlVisibility();
@@ -1241,8 +1391,11 @@ void MainWindow::showImmersiveControls()
     if (!immersiveMode_ || !controlStrip_) {
         return;
     }
-    if (centralWidget()) {
-        centralWidget()->unsetCursor();
+    QWidget *immersiveSurface = immersiveFullscreenWindow_
+        ? immersiveFullscreenWindow_
+        : centralWidget();
+    if (immersiveSurface) {
+        immersiveSurface->unsetCursor();
     }
     controlStrip_->show();
     positionImmersiveControls();
@@ -1262,8 +1415,11 @@ void MainWindow::hideImmersiveControls()
         return;
     }
     controlStrip_->hide();
-    if (centralWidget()) {
-        centralWidget()->setCursor(Qt::BlankCursor);
+    QWidget *immersiveSurface = immersiveFullscreenWindow_
+        ? immersiveFullscreenWindow_
+        : centralWidget();
+    if (immersiveSurface) {
+        immersiveSurface->setCursor(Qt::BlankCursor);
     }
 }
 
@@ -1291,22 +1447,89 @@ void MainWindow::setImmersiveSurfaceStyle(bool immersive)
         widget->setProperty("immersive", value);
         refreshWidgetStyle(widget);
     }
+    updateVideoHostMask();
+}
+
+void MainWindow::updateVideoHostMask()
+{
+    if (!videoHost_) {
+        return;
+    }
+    if (immersiveMode_ || videoHost_->width() <= 0 || videoHost_->height() <= 0) {
+        videoHost_->clearMask();
+        return;
+    }
+
+    const qreal radius = std::min(
+        kVideoHostCornerRadius,
+        static_cast<qreal>(std::min(videoHost_->width(), videoHost_->height())) / 2.0);
+    QPainterPath path;
+    path.addRoundedRect(
+        QRectF(0.0, 0.0, videoHost_->width(), videoHost_->height()),
+        radius,
+        radius);
+    const QRegion roundedMask(path.toFillPolygon().toPolygon(), Qt::WindingFill);
+    videoHost_->setMask(roundedMask.intersected(QRegion(videoHost_->rect())));
 }
 
 bool MainWindow::isEventFromThisWindow(QObject *object) const
 {
     const auto *widget = qobject_cast<const QWidget *>(object);
-    return widget && (widget == this || isAncestorOf(widget));
+    return widget
+        && (widget == this
+            || isAncestorOf(widget)
+            || widget == immersiveFullscreenWindow_
+            || (immersiveFullscreenWindow_ && immersiveFullscreenWindow_->isAncestorOf(widget)));
+}
+
+void MainWindow::enterSystemFullscreenImmersive()
+{
+    if (!immersiveMode_ || immersiveFullscreenWindow_ || !playerPane_ || !rootLayout_) {
+        return;
+    }
+
+    immersiveWindowMode_ = ImmersiveWindowMode::SystemFullScreen;
+    immersiveFullscreenWindow_ = new QWidget(nullptr, Qt::Tool | Qt::FramelessWindowHint);
+    immersiveFullscreenWindow_->setObjectName(QStringLiteral("immersiveFullscreenWindow"));
+    immersiveFullscreenWindow_->setAttribute(Qt::WA_DeleteOnClose, false);
+    immersiveFullscreenWindow_->setStyleSheet(
+        styleSheet() + QStringLiteral("\nQWidget#immersiveFullscreenWindow { background:#01040a; }"));
+    auto *fullscreenLayout = new QVBoxLayout(immersiveFullscreenWindow_);
+    fullscreenLayout->setContentsMargins(0, 0, 0, 0);
+    fullscreenLayout->setSpacing(0);
+
+    rootLayout_->removeWidget(playerPane_);
+    playerPane_->setParent(immersiveFullscreenWindow_);
+    fullscreenLayout->addWidget(playerPane_);
+    playerPane_->show();
+    enableMouseTrackingForTree(immersiveFullscreenWindow_);
+    immersiveFullscreenWindow_->showFullScreen();
+    immersiveFullscreenWindow_->raise();
+    immersiveFullscreenWindow_->activateWindow();
+    QTimer::singleShot(0, this, &MainWindow::positionImmersiveControls);
+}
+
+void MainWindow::leaveSystemFullscreenImmersive()
+{
+    if (!immersiveFullscreenWindow_ || !playerPane_ || !rootLayout_) {
+        return;
+    }
+
+    QWidget *fullscreenWindow = immersiveFullscreenWindow_;
+    immersiveFullscreenWindow_ = nullptr;
+    fullscreenWindow->hide();
+    if (fullscreenWindow->layout()) {
+        fullscreenWindow->layout()->removeWidget(playerPane_);
+    }
+    playerPane_->setParent(centralWidget());
+    rootLayout_->insertWidget(0, playerPane_, 1);
+    playerPane_->show();
+    delete fullscreenWindow;
 }
 
 void MainWindow::toggleMaximized()
 {
-    if (isMaximized()) {
-        showNormal();
-    } else {
-        showMaximized();
-    }
-    updateMaximizeButton();
+    isMaximized() ? showNormal() : showMaximized();
 }
 
 void MainWindow::updateWindowControlGeometry()
@@ -1323,7 +1546,7 @@ void MainWindow::updateWindowControlVisibility()
     if (!windowControls_) {
         return;
     }
-    if (immersiveUsesWindowFullscreen_ || isFullScreen()) {
+    if (immersiveWindowMode_ == ImmersiveWindowMode::SystemFullScreen || isFullScreen()) {
         windowControls_->hide();
         return;
     }
@@ -1487,7 +1710,7 @@ void MainWindow::keyPressEvent(QKeyEvent *event)
         return;
     }
     switch (event->key()) {
-    case Qt::Key_Space:
+    case Qt::Key_Space: handleSpacePlaybackAction(); break;
     case Qt::Key_K: togglePlayPause(true); break;
     default: QMainWindow::keyPressEvent(event); return;
     }
@@ -1550,11 +1773,15 @@ void MainWindow::changeEvent(QEvent *event)
         updateMaximizeButton();
         updateWindowControlGeometry();
         positionImmersiveControls();
-        if (immersiveMode_ && !immersiveUsesWindowFullscreen_ && isMaximized()) {
-            immersiveUsesWindowFullscreen_ = true;
+        if (immersiveMode_
+            && immersiveWindowMode_ == ImmersiveWindowMode::InWindow
+            && isMaximized()) {
+            immersiveWindowMode_ = ImmersiveWindowMode::SystemFullScreen;
             QTimer::singleShot(0, this, [this]() {
-                if (immersiveMode_ && immersiveUsesWindowFullscreen_ && !isFullScreen()) {
-                    showFullScreen();
+                if (immersiveMode_
+                    && immersiveWindowMode_ == ImmersiveWindowMode::SystemFullScreen
+                    && !immersiveFullscreenWindow_) {
+                    enterSystemFullscreenImmersive();
                     showImmersiveControls();
                 }
             });
@@ -1571,6 +1798,20 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
                 || object == subtitleListScrollBar_);
     };
 
+    if (watched == videoHost_ && event->type() == QEvent::Resize) {
+        updateVideoHostMask();
+    }
+
+    if (watched == immersiveFullscreenWindow_ && event->type() == QEvent::Close) {
+        event->ignore();
+        QTimer::singleShot(0, this, [this]() {
+            if (immersiveMode_ && immersiveFullscreenWindow_) {
+                exitImmersivePlayback();
+            }
+        });
+        return true;
+    }
+
     if (immersiveMode_ && isEventFromThisWindow(watched)) {
         switch (event->type()) {
         case QEvent::MouseMove:
@@ -1586,7 +1827,9 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
         }
     }
 
-    if (event->type() == QEvent::KeyPress && QApplication::activeWindow() == this) {
+    const QWidget *activeWindow = QApplication::activeWindow();
+    const bool playbackWindowActive = activeWindow == this || activeWindow == immersiveFullscreenWindow_;
+    if (event->type() == QEvent::KeyPress && playbackWindowActive) {
         auto *keyEvent = static_cast<QKeyEvent *>(event);
         if (immersiveMode_ && keyEvent->modifiers() == Qt::NoModifier && keyEvent->key() == Qt::Key_Escape) {
             exitImmersivePlayback();
@@ -1605,8 +1848,12 @@ bool MainWindow::eventFilter(QObject *watched, QEvent *event)
             suppressSubtitleAutoScrollForManualNavigation();
             return false;
         }
-        if (keyEvent->modifiers() == Qt::NoModifier
-            && (keyEvent->key() == Qt::Key_Space || keyEvent->key() == Qt::Key_K)) {
+        if (keyEvent->modifiers() == Qt::NoModifier && keyEvent->key() == Qt::Key_Space) {
+            handleSpacePlaybackAction();
+            keyEvent->accept();
+            return true;
+        }
+        if (keyEvent->modifiers() == Qt::NoModifier && keyEvent->key() == Qt::Key_K) {
             togglePlayPause(true);
             keyEvent->accept();
             return true;

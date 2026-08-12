@@ -37,6 +37,7 @@ public:
     bool seekAbsolute(double seconds, QString *error = nullptr);
     bool seekTo(double seconds, QString *error = nullptr);
     bool togglePlayPause(bool *paused, QString *error = nullptr);
+    bool setPaused(bool paused, QString *error = nullptr);
     bool setSubtitleOverlay(bool enabled, QString *error = nullptr);
     bool disablePictureSubtitle(QString *error = nullptr);
     bool setAutoPictureSubtitle(QString *error = nullptr);
