@@ -5,6 +5,8 @@
 #include <limits>
 
 namespace {
+constexpr double kRepeatTailAllowanceSeconds = 2.0;
+
 qsizetype findActiveCueIndex(const QVector<SubtitleCue> &cues, double positionSeconds)
 {
     for (qsizetype index = 0; index < cues.size(); ++index) {
@@ -81,7 +83,7 @@ const SubtitleCue *findAdjacentSubtitleCueById(
     return nullptr;
 }
 
-double subtitleCuePlaybackEnd(
+double subtitleCueRepeatBoundary(
     const QVector<SubtitleCue> &cues,
     int cueId,
     double mediaDurationSeconds)
@@ -92,22 +94,27 @@ double subtitleCuePlaybackEnd(
             continue;
         }
 
-        double end = std::isfinite(cue.endSeconds) && cue.endSeconds > cue.startSeconds
+        const double subtitleEnd = std::isfinite(cue.endSeconds) && cue.endSeconds > cue.startSeconds
             ? cue.endSeconds
             : -1.0;
-        if (end < 0.0) {
-            for (qsizetype nextIndex = index + 1; nextIndex < cues.size(); ++nextIndex) {
-                if (std::isfinite(cues[nextIndex].startSeconds)
-                    && cues[nextIndex].startSeconds > cue.startSeconds) {
-                    end = cues[nextIndex].startSeconds;
-                    break;
-                }
+        double playbackEnd = subtitleEnd > cue.startSeconds
+            ? subtitleEnd + kRepeatTailAllowanceSeconds
+            : -1.0;
+        for (qsizetype nextIndex = index + 1; nextIndex < cues.size(); ++nextIndex) {
+            const double nextStart = cues[nextIndex].startSeconds;
+            if (std::isfinite(nextStart) && nextStart > cue.startSeconds) {
+                playbackEnd = playbackEnd > cue.startSeconds
+                    ? std::min(playbackEnd, nextStart)
+                    : nextStart;
+                break;
             }
         }
         if (std::isfinite(mediaDurationSeconds) && mediaDurationSeconds > cue.startSeconds) {
-            end = end > cue.startSeconds ? std::min(end, mediaDurationSeconds) : mediaDurationSeconds;
+            playbackEnd = playbackEnd > cue.startSeconds
+                ? std::min(playbackEnd, mediaDurationSeconds)
+                : mediaDurationSeconds;
         }
-        return end > cue.startSeconds ? end : -1.0;
+        return playbackEnd > cue.startSeconds ? playbackEnd : -1.0;
     }
     return -1.0;
 }

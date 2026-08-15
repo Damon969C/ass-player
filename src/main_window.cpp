@@ -350,7 +350,7 @@ void MainWindow::buildUi()
     playPauseButton_->setObjectName(QStringLiteral("playPauseButton"));
     repeatToggle_ = new QCheckBox(QStringLiteral("重复"), playerPane_);
     repeatToggle_->setObjectName(QStringLiteral("repeatToggle"));
-    repeatToggle_->setToolTip(QStringLiteral("逐条练习：字幕结束时自动暂停，空格重播当前字幕"));
+    repeatToggle_->setToolTip(QStringLiteral("逐条练习：下一条字幕前暂停，间隔过长时保留 2 秒尾音；空格重播当前字幕"));
     overlayToggle_ = new QCheckBox(QStringLiteral("画面字幕"), playerPane_);
     pictureSubtitleSelect_ = new ChevronComboBox(playerPane_);
     auto *pictureSubtitleSelectPopup = new QListView(pictureSubtitleSelect_);
@@ -1249,8 +1249,8 @@ bool MainWindow::pauseAtRepeatBoundary(PlaybackState *state)
     if (!cue) {
         return false;
     }
-    const double end = subtitleCuePlaybackEnd(cues_, cue->id, state->duration);
-    if (end < 0.0 || state->position < end) {
+    const double boundary = subtitleCueRepeatBoundary(cues_, cue->id, state->duration);
+    if (boundary < 0.0 || state->position < boundary) {
         return false;
     }
 
@@ -1262,8 +1262,8 @@ bool MainWindow::pauseAtRepeatBoundary(PlaybackState *state)
     state->paused = true;
 
     QString seekError;
-    if (mpv_.seekAbsolute(end, &seekError)) {
-        state->position = end;
+    if (mpv_.seekAbsolute(boundary, &seekError)) {
+        state->position = boundary;
     } else {
         setStatus(QStringLiteral("重复模式定位失败: %1").arg(seekError));
     }

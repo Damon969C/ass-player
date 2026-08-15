@@ -24,17 +24,17 @@ void expectCue(
     }
 }
 
-void expectPlaybackEnd(
+void expectRepeatBoundary(
     const QVector<SubtitleCue> &cues,
     int cueId,
     double mediaDurationSeconds,
-    double expectedEnd,
+    double expectedBoundary,
     const char *scenario)
 {
-    const double actualEnd = subtitleCuePlaybackEnd(cues, cueId, mediaDurationSeconds);
-    if (std::abs(actualEnd - expectedEnd) > 0.0001) {
-        QTextStream(stderr) << scenario << ": expected end " << expectedEnd
-                            << ", got " << actualEnd << '\n';
+    const double actualBoundary = subtitleCueRepeatBoundary(cues, cueId, mediaDurationSeconds);
+    if (std::abs(actualBoundary - expectedBoundary) > 0.0001) {
+        QTextStream(stderr) << scenario << ": expected boundary " << expectedBoundary
+                            << ", got " << actualBoundary << '\n';
         ++failures;
     }
 }
@@ -85,9 +85,24 @@ int main()
         ++failures;
     }
 
-    expectPlaybackEnd(cues, 1, 100.0, 24.0, "explicit subtitle end");
-    expectPlaybackEnd(cues, 2, 32.0, 32.0, "media duration clips subtitle end");
-    expectPlaybackEnd(cues, 99, 100.0, -1.0, "unknown subtitle end");
+    expectRepeatBoundary(cues, 0, 100.0, 16.0, "long gap keeps two seconds of subtitle tail");
+    expectRepeatBoundary(cues, 0, 15.0, 15.0, "media duration clips the tail allowance");
+    expectRepeatBoundary(cues, 1, 100.0, 26.0, "repeat boundary is capped at two seconds after subtitle end");
+    expectRepeatBoundary(cues, 2, 32.0, 32.0, "media duration clips subtitle end");
+    expectRepeatBoundary(cues, 2, 100.0, 36.0, "last subtitle keeps two seconds of tail");
+    expectRepeatBoundary(cues, 99, 100.0, -1.0, "unknown subtitle boundary");
+
+    const QVector<SubtitleCue> closeSpacedCues = {
+        {0, 10.0, 14.0, QStringLiteral("first"), QStringLiteral("test")},
+        {1, 15.5, 19.0, QStringLiteral("second"), QStringLiteral("test")},
+    };
+    expectRepeatBoundary(closeSpacedCues, 0, 100.0, 15.5, "short gap uses next subtitle start");
+
+    const QVector<SubtitleCue> overlappingCues = {
+        {0, 10.0, 17.0, QStringLiteral("first"), QStringLiteral("test")},
+        {1, 16.0, 20.0, QStringLiteral("second"), QStringLiteral("test")},
+    };
+    expectRepeatBoundary(overlappingCues, 0, 100.0, 16.0, "overlap still stops at next subtitle start");
 
     const QVector<SubtitleCue> openEndedCues = {
         {0, 10.0, 14.0, QStringLiteral("first"), QStringLiteral("test")},
@@ -95,14 +110,14 @@ int main()
     };
     expectCue(openEndedCues, 30.0, SubtitleNavigationDirection::Previous, 0, "open-ended last previous");
     expectCue(openEndedCues, 30.0, SubtitleNavigationDirection::Next, -1, "open-ended last next");
-    expectPlaybackEnd(openEndedCues, 1, 42.0, 42.0, "open-ended last cue uses media duration");
+    expectRepeatBoundary(openEndedCues, 1, 42.0, 42.0, "open-ended last cue uses media duration");
 
     const QVector<SubtitleCue> missingEndCues = {
         {0, 10.0, -1.0, QStringLiteral("first"), QStringLiteral("test")},
         {1, 20.0, 24.0, QStringLiteral("second"), QStringLiteral("test")},
     };
-    expectPlaybackEnd(missingEndCues, 0, 40.0, 20.0, "missing end uses next subtitle start");
-    expectPlaybackEnd(missingEndCues, 0, 15.0, 15.0, "media duration clips inferred subtitle end");
+    expectRepeatBoundary(missingEndCues, 0, 40.0, 20.0, "missing end uses next subtitle start");
+    expectRepeatBoundary(missingEndCues, 0, 15.0, 15.0, "media duration clips inferred subtitle end");
 
     return failures == 0 ? 0 : 1;
 }

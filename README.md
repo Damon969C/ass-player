@@ -13,7 +13,7 @@ ASS Player 是一个使用 Qt6/C++ 编写的 Windows 字幕侧栏播放器。它
 当前程序 SHA-256：
 
 ```text
-3b100d25627d87d09aa5e8552a74e766541124c85f99f64fe942b784d8a400d7
+b2fc3439d4eb087fe429d26b78a084fbba02929c74bdedf9ed57bd051d56410b
 ```
 
 ## 功能

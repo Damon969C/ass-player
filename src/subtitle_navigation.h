@@ -19,7 +19,7 @@ const SubtitleCue *findAdjacentSubtitleCueById(
     int cueId,
     SubtitleNavigationDirection direction);
 
-double subtitleCuePlaybackEnd(
+double subtitleCueRepeatBoundary(
     const QVector<SubtitleCue> &cues,
     int cueId,
     double mediaDurationSeconds);
